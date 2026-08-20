@@ -1,0 +1,270 @@
+cells:
+  - kind: 2
+    languageId: sql
+    value: "select MfgOrderID,\r
+
+      MfgOrderName\r
+
+      FROM [EXCRSch].MfgOrder\r
+
+      WHERE isWorkflowId ='0005aa800003898d'"
+    metadata: {}
+  - kind: 2
+    languageId: sql
+    value: "select \r
+
+      \twfb.WorkflowName\r
+
+      \t,wf.WorkflowRevision\r
+
+      \t,ws.WorkflowStepName StepName\r
+
+      \t,ws.RouteStepId\r
+
+      \t,rs.Name RouteStepName\r
+
+      \t,ws.Sequence\r
+
+      \t,erb.ERPRouteName\r
+
+      \ from \r
+
+      [STDS].[EXCRSCh].Workflow wf\r
+
+      inner join [STDS].[EXCRSCh].WorkflowBase wfb with(nolock) on wf.WorkflowId
+      = wfb.RevOfRcdId \r
+
+      left join [STDS].[EXCRSCh].WorkflowStep ws with(nolock) on ws.WorkflowId =
+      wf.WorkflowId\r
+
+      left join [STDS].[EXCRSCh].RouteStep rs with(nolock) on
+      rs.RouteStepId=ws.RouteStepId\r
+
+      left join [STDS].[EXCRSCh].ERPRoute erp with(nolock) on case when
+      wf.ERPRouteId='0000000000000000' then (select eb.RevOfRcdId from
+      [STDS].[EXCRSCh].ERPRouteBase eb where
+      eb.ERPRouteBaseId=wf.ERPRouteBaseId)\r
+
+      \telse erp.ERPRouteId end = wf.ERPRouteId\r
+
+      left join [STDS].[EXCRSCh].ERPRouteBase erb with(nolock) on
+      erb.ERPRouteBaseId = erp.ERPRouteBaseId\r
+
+      \r
+
+      order by wfb.WorkflowName,ws.Sequence"
+    metadata: {}
+  - kind: 2
+    languageId: sql
+    value: " SELECT\r
+
+      \        tpm.ES_ToolPlanMatrixName AS Name,\r
+
+      \        tpm.Description,\r
+
+      \        tpm.Notes,\r
+
+      \        r.ResourceName AS Resource,\r
+
+      \        tp.ToolPlanName AS ToolPlan,\r
+
+      \        sb.SpecName AS Spec,\r
+
+      \        tpmd.mlxIdealCycleTime,\r
+
+      \        tpmd.mlxProductionVersion,\r
+
+      \        tpmd.mlxPriority,\r
+
+      \        erb.ERPRouteName AS mlxERPRoute\r
+
+      \    FROM EXCRSch.ES_ToolPlanMatrix tpm\r
+
+      \r
+
+      \    LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails tpmd\r
+
+      \        ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId\r
+
+      \        AND tpmd.hvr_is_deleted = 0\r
+
+      \r
+
+      \    LEFT JOIN EXCRSch.SpecBase sb\r
+
+      \        ON sb.SpecBaseId = tpmd.SpecBaseId\r
+
+      \        AND sb.hvr_is_deleted = 0\r
+
+      \r
+
+      \    LEFT JOIN EXCRSch.ResourceDef r\r
+
+      \        ON r.ResourceId = tpmd.ResourceId\r
+
+      \        AND r.hvr_is_deleted = 0\r
+
+      \r
+
+      \    LEFT JOIN EXCRSch.A_ToolPlan tp\r
+
+      \        ON tp.ToolPlanId = tpmd.ToolPlanId\r
+
+      \        AND tp.hvr_is_deleted = 0\r
+
+      \r
+
+      \    LEFT JOIN EXCRSch.ERPRouteBase erb\r
+
+      \        ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId\r
+
+      \        AND erb.hvr_is_deleted = 0\r
+
+      \r
+
+      \    WHERE\r
+
+      \        tpm.hvr_is_deleted = 0\r
+
+      \        --AND tpm.ES_ToolPlanMatrixName IN ({placeholders})\r
+
+      \r
+
+      \    ORDER BY\r
+
+      \        tpm.ES_ToolPlanMatrixName,\r
+
+      \        tpmd.mlxPriority"
+    metadata: {}
+  - kind: 2
+    languageId: sql
+    value: "SELECT\r
+
+      \    tpm.ES_ToolPlanMatrixName AS Name,\r
+
+      \    r.ResourceName AS Resource,\r
+
+      \    tp.ToolPlanName AS ToolPlan,\r
+
+      \    sb.SpecName AS SpecName,\r
+
+      \    tpmd.mlxIdealCycleTime,\r
+
+      \    tpmd.mlxProductionVersion,\r
+
+      \    tpmd.mlxPriority,\r
+
+      \    erb.ERPRouteName AS mlxERPRoute,\r
+
+      \    ws.WorkflowStepName AS [workflow.StepName],\r
+
+      \    rs.Name AS [workflow.RouteStepName],\r
+
+      \    ws.Sequence AS [workflow.Sequence],\r
+
+      \    erb_wf.ERPRouteName AS [workflow.ERPRouteName]\r
+
+      FROM EXCRSch.ES_ToolPlanMatrix tpm\r
+
+      \r
+
+      LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails tpmd\r
+
+      \    ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId\r
+
+      \    AND tpmd.hvr_is_deleted = 0\r
+
+      \r
+
+      LEFT JOIN EXCRSch.SpecBase sb\r
+
+      \    ON sb.SpecBaseId = tpmd.SpecBaseId\r
+
+      \    AND sb.hvr_is_deleted = 0\r
+
+      \r
+
+      LEFT JOIN EXCRSch.ResourceDef r\r
+
+      \    ON r.ResourceId = tpmd.ResourceId\r
+
+      \    AND r.hvr_is_deleted = 0\r
+
+      \r
+
+      LEFT JOIN EXCRSch.A_ToolPlan tp\r
+
+      \    ON tp.ToolPlanId = tpmd.ToolPlanId\r
+
+      \    AND tp.hvr_is_deleted = 0\r
+
+      \r
+
+      LEFT JOIN EXCRSch.ERPRouteBase erb\r
+
+      \    ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId\r
+
+      \    AND erb.hvr_is_deleted = 0\r
+
+      \r
+
+      -- Inner join to Workflow via ERPRouteName\r
+
+      INNER JOIN [STDS].[EXCRSCh].ERPRouteBase erb_wf WITH(NOLOCK)\r
+
+      \    ON erb_wf.ERPRouteName = erb.ERPRouteName\r
+
+      \r
+
+      INNER JOIN [STDS].[EXCRSCh].ERPRoute erp WITH(NOLOCK)\r
+
+      \    ON erp.ERPRouteBaseId = erb_wf.ERPRouteBaseId\r
+
+      \r
+
+      INNER JOIN [STDS].[EXCRSCh].Workflow wf WITH(NOLOCK)\r
+
+      \    ON wf.ERPRouteId = erp.ERPRouteId\r
+
+      \    OR (wf.ERPRouteId = '0000000000000000' AND wf.ERPRouteBaseId =
+      erb_wf.ERPRouteBaseId)\r
+
+      \r
+
+      LEFT JOIN [STDS].[EXCRSCh].WorkflowStep ws WITH(NOLOCK)\r
+
+      \    ON ws.WorkflowId = wf.WorkflowId\r
+
+      \r
+
+      LEFT JOIN [STDS].[EXCRSCh].RouteStep rs WITH(NOLOCK)\r
+
+      \    ON rs.RouteStepId = ws.RouteStepId\r
+
+      \r
+
+      WHERE\r
+
+      \    tpm.hvr_is_deleted = 0\r
+
+      \    AND ws.Sequence = 3\r
+
+      \    AND LTRIM(RTRIM(LOWER(sb.SpecName))) <>
+      LTRIM(RTRIM(LOWER(ws.WorkflowStepName)))\r
+
+      \    --AND tpm.ES_ToolPlanMatrixName IN ({placeholders})\r
+
+      \r
+
+      ORDER BY\r
+
+      \    tpm.ES_ToolPlanMatrixName,\r
+
+      \    tpmd.mlxPriority"
+    metadata: {}
+metadata:
+  conn:
+    id: E-zqQDPHWfRBKsq1WKNMW
+    name: MLXVHAVWPOPDB03
+  database: STDS
+  schema: dbo
