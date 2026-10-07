@@ -66,63 +66,71 @@ def get_sql_connection():
 # ============================================================
 # FETCH EXISTING TPM
 # ============================================================
-def fetch_existing_tool_plan_matrix(materials):
-
+def fetch_existing_tool_plan_matrix(materials, batch_size=500):
     if not materials:
         return pd.DataFrame(columns=OUTPUT_COLUMNS)
 
-    placeholders = ",".join(["?"] * len(materials))
-
-    query = f"""
-    SELECT
-        tpm.ES_ToolPlanMatrixName AS Name,
-        tpm.Description,
-        tpm.Notes,
-        r.ResourceName AS Resource,
-        tp.ToolPlanName AS ToolPlan,
-        sb.SpecName AS Spec,
-        tpmd.mlxIdealCycleTime,
-        tpmd.mlxProductionVersion,
-        tpmd.mlxPriority,
-        erb.ERPRouteName AS mlxERPRoute
-    FROM EXCRSch.ES_ToolPlanMatrix tpm
-
-    LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails tpmd
-        ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId
-        AND tpmd.hvr_is_deleted = 0
-
-    LEFT JOIN EXCRSch.SpecBase sb
-        ON sb.SpecBaseId = tpmd.SpecBaseId
-        AND sb.hvr_is_deleted = 0
-
-    LEFT JOIN EXCRSch.ResourceDef r
-        ON r.ResourceId = tpmd.ResourceId
-        AND r.hvr_is_deleted = 0
-
-    LEFT JOIN EXCRSch.A_ToolPlan tp
-        ON tp.ToolPlanId = tpmd.ToolPlanId
-        AND tp.hvr_is_deleted = 0
-
-    LEFT JOIN EXCRSch.ERPRouteBase erb
-        ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId
-        AND erb.hvr_is_deleted = 0
-
-    WHERE
-        tpm.hvr_is_deleted = 0
-        AND tpm.ES_ToolPlanMatrixName IN ({placeholders})
-
-    ORDER BY
-        tpm.ES_ToolPlanMatrixName,
-        tpmd.mlxPriority
-    """
+    result = []
 
     with get_sql_connection() as conn:
-        existing_df = pd.read_sql(
-            query,
-            conn,
-            params=materials
-        )
+        for start in range(0, len(materials), batch_size):
+            batch = materials[start:start + batch_size]
+
+            print(f"Loading TPM batch {start+1}-{start+len(batch)} of {len(materials)} materials...")
+
+            placeholders = ",".join(["?"] * len(batch))
+
+            query = f"""
+            SELECT
+                tpm.ES_ToolPlanMatrixName AS Name,
+                tpm.Description,
+                tpm.Notes,
+                r.ResourceName AS Resource,
+                tp.ToolPlanName AS ToolPlan,
+                sb.SpecName AS Spec,
+                tpmd.mlxIdealCycleTime,
+                tpmd.mlxProductionVersion,
+                tpmd.mlxPriority,
+                erb.ERPRouteName AS mlxERPRoute
+            FROM EXCRSch.ES_ToolPlanMatrix tpm
+
+            LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails tpmd
+                ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId
+                AND tpmd.hvr_is_deleted = 0
+
+            LEFT JOIN EXCRSch.SpecBase sb
+                ON sb.SpecBaseId = tpmd.SpecBaseId
+                AND sb.hvr_is_deleted = 0
+
+            LEFT JOIN EXCRSch.ResourceDef r
+                ON r.ResourceId = tpmd.ResourceId
+                AND r.hvr_is_deleted = 0
+
+            LEFT JOIN EXCRSch.A_ToolPlan tp
+                ON tp.ToolPlanId = tpmd.ToolPlanId
+                AND tp.hvr_is_deleted = 0
+
+            LEFT JOIN EXCRSch.ERPRouteBase erb
+                ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId
+                AND erb.hvr_is_deleted = 0
+
+            WHERE
+                tpm.hvr_is_deleted = 0
+                AND tpm.ES_ToolPlanMatrixName IN ({placeholders})
+
+            ORDER BY
+                tpm.ES_ToolPlanMatrixName,
+                tpmd.mlxPriority
+            """
+
+            batch_df = pd.read_sql(query, conn, params=batch)
+
+            if not batch_df.empty:
+                result.append(batch_df)
+
+    existing_df = pd.concat(result, ignore_index=True) if result else pd.DataFrame(columns=OUTPUT_COLUMNS)
     existing_df["RowType"] = "Existing"
+
     return existing_df
 
 
