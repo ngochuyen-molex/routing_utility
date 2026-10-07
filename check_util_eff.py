@@ -12,6 +12,8 @@ def compare_routing_eff_util(excel_path: str, sheet_name: str = 'Sheet1'):
         s.PLNAL AS group_counter,
         k.KTEXT AS routing_name,
         p.VORNR AS operation,
+        p.LTXA1 AS operation_description,
+        w.ARBPL AS work_center,
         p.USR04 AS efficiency,
         p.USR05 AS utilization
     FROM MAPL m
@@ -32,6 +34,7 @@ def compare_routing_eff_util(excel_path: str, sheet_name: str = 'Sheet1'):
     """
 
     df_sf = pd.read_sql(sql, conn)
+    df_sf.columns = df_sf.columns.str.strip().str.lower()
     conn.close()
 
     # 2. Read Excel
@@ -40,11 +43,11 @@ def compare_routing_eff_util(excel_path: str, sheet_name: str = 'Sheet1'):
     # Adjust these column names to match your Excel headers exactly
     df_excel.rename(columns={
         'Material': 'material',
-        'Group': 'group_counter',       # adjust if needed
-        'Group Counter': 'group_counter',
+        'group': 'group_counter',       # adjust if needed
+        'group Counter': 'group_counter',
         'Efficiency': 'excel_eff',
         'Utilization': 'excel_util',
-        'Resource and Tool': 'routing_name_excel'
+        'Resource': 'Resource'
     }, inplace=True)
 
     # Normalize keys for matching
@@ -84,4 +87,4 @@ def compare_routing_eff_util(excel_path: str, sheet_name: str = 'Sheet1'):
 
 
 if __name__ == '__main__':
-    compare_routing_eff_util(r'C:\path\to\your\file.xlsx')
+    compare_routing_eff_util(r'C:\Users\nguyeb3\OneDrive - kochind.com\add_routing_chau_september.xlsx')

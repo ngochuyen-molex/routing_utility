@@ -45,7 +45,7 @@ WITH routing_exists AS (
         AND pk.LOEKZ = ' '
         AND pk.DW_SOFT_DELETE_FLAG = 0
         AND mp.DW_SOFT_DELETE_FLAG = 0
-        AND mp.MATNR = '000000005032980099'
+        AND mp.MATNR = '000000000522691620'
         AND po.VORNR = '0020'
 )
 SELECT * FROM routing_exists;
@@ -71,3 +71,45 @@ SELECT * FROM routing_exists;
 --   • Deletion check: pk.LOEKZ = ' ' filters out deleted routings.
 --   • Soft delete: DW_SOFT_DELETE_FLAG = 0 excludes records soft-deleted in the data lake.
 --   • If the query returns rows, a duplicate exists - skip the routing creation in SAP.
+
+
+SELECT DISTINCT
+    mp.MATNR,
+    cr.ARBPL AS RESOURCE,
+    po.VORNR AS OPERATION,
+    pk.DELKZ AS ROUTING_DELETED,
+    pk.PLNNR AS ROUTING_GROUP,
+    pk.PLNAL AS GROUP_COUNTER,
+    po.LOEKZ AS OPERATION_DELETED,
+    mc.MMSTA AS MATERIAL_STATUS
+FROM MLX_DATALAKE.MLX_SAP_ECC.MAPL mp
+JOIN MLX_DATALAKE.MLX_SAP_ECC.PLKO pk
+    ON mp.MANDT = pk.MANDT
+    AND mp.PLNTY = pk.PLNTY
+    AND mp.PLNNR = pk.PLNNR
+    AND mp.PLNAL = pk.PLNAL
+JOIN MLX_DATALAKE.MLX_SAP_ECC.PLAS ps
+    ON pk.MANDT = ps.MANDT
+    AND pk.PLNTY = ps.PLNTY
+    AND pk.PLNNR = ps.PLNNR
+    AND pk.PLNAL = ps.PLNAL
+JOIN MLX_DATALAKE.MLX_SAP_ECC.PLPO po
+    ON ps.MANDT = po.MANDT
+    AND ps.PLNTY = po.PLNTY
+    AND ps.PLNNR = po.PLNNR
+    AND ps.PLNKN = po.PLNKN
+JOIN MLX_DATALAKE.MLX_SAP_ECC.CRHD cr
+    ON po.ARBID = cr.OBJID
+    AND po.MANDT = cr.MANDT
+JOIN MLX_DATALAKE.MLX_SAP_ECC.MARC mc
+    ON mp.MATNR = mc.MATNR
+    AND pk.WERKS = mc.WERKS
+WHERE pk.WERKS = '1901'
+    AND po.VORNR = '0020'
+    AND mp.PLNTY = 'N' -- show only visible routing in sap
+    AND mp.DW_SOFT_DELETE_FLAG = 0 --Routing assignments deleted from SAP and marked for cleanup in the data lake
+    AND pk.DW_SOFT_DELETE_FLAG = 0 --Routing headers that were fully removed
+    AND mp.LOEKZ != 'X' -- exclude Material-to-routing links flagged as deleted in SAP ->Non-deleted MAPL assignments
+    AND ps.DW_SOFT_DELETE_FLAG = 0 --Deleted sequences (e.g. old A505110D at GC 00)
+    and po.DW_SOFT_DELETE_FLAG = 0 --Deleted operations
+    AND mp.MATNR IN ('000000000522691620')

@@ -10,11 +10,11 @@ def check_routing_exists(file_path: str, output_path: str = None):
         output_path = file_path
 
     df = pd.read_excel(file_path)
-    df['Material'] = df['Material'].astype(str).str.strip()
+    df['Material'] = df['Material'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
     df['Resource'] = df['Resource'].astype(str).str.strip()
 
     # Handle optional columns - fill blanks
-    for col in ['Tool', 'WorkCenter']:
+    for col in ['Tool', 'WorkCenter', 'Sorting/ Lubricant']:
         if col not in df.columns:
             df[col] = ''
         else:
@@ -101,22 +101,41 @@ def check_routing_exists(file_path: str, output_path: str = None):
         # Check 2: Does routing with this resource already exist?
         if res:
             match = routing_df[
-                (routing_df['Material'] == mat) & (routing_df['RESOURCE'] == res)
+                (routing_df['Material'] == mat) &
+                (routing_df['RESOURCE'] == res)
             ]
         else:
-            # If resource is blank, skip the resource check
             match = pd.DataFrame()
 
         if not match.empty:
-            skip_flags.append(1)
-            routing_descriptions.append(match.iloc[0]['ROUTING_DESCRIPTION'])
-            routing_groups.append(match.iloc[0]['ROUTING_GROUP'])
-            group_counters.append(match.iloc[0]['GROUP_COUNTER'])
+            desc = str(match.iloc[0]['ROUTING_DESCRIPTION'])
+
+            tool = row['Tool']
+            wc = row['WorkCenter']
+            sorting = row['Sorting/ Lubricant']
+
+            tool_ok = (not tool) or (tool in desc)
+            wc_ok = (not wc) or (wc in desc)
+            sorting_ok = (not sorting) or (sorting in desc)
+
+            if tool_ok and wc_ok and sorting_ok:
+                skip_flags.append(1)
+                routing_descriptions.append(desc)
+                routing_groups.append(match.iloc[0]['ROUTING_GROUP'])
+                group_counters.append(match.iloc[0]['GROUP_COUNTER'])
+            else:
+                skip_flags.append(0)
+                routing_descriptions.append('')
+                routing_groups.append('')
+                group_counters.append('')
         else:
             skip_flags.append(0)
             routing_descriptions.append('')
             routing_groups.append('')
             group_counters.append('')
+
+    df['group'] = routing_groups
+    df['group counter'] = group_counters
 
     df['SKIP'] = skip_flags
     df['SKIP_REASON'] = df['SKIP'].map({
@@ -125,8 +144,6 @@ def check_routing_exists(file_path: str, output_path: str = None):
         2: 'Material not at plant'
     })
     df['ROUTING_DESCRIPTION'] = routing_descriptions
-    df['ROUTING_GROUP'] = routing_groups
-    df['GROUP_COUNTER'] = group_counters
 
     df.to_excel(output_path, index=False)
 

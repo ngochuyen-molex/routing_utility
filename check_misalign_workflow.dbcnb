@@ -7,7 +7,7 @@ cells:
 
       FROM [EXCRSch].MfgOrder\r
 
-      WHERE isWorkflowId ='0005aa800003898d'"
+      WHERE isWorkflowId = '0005aa800003898b'"
     metadata: {}
   - kind: 2
     languageId: sql
@@ -56,85 +56,85 @@ cells:
     metadata: {}
   - kind: 2
     languageId: sql
-    value: " SELECT\r
+    value: "SELECT\r
 
-      \        tpm.ES_ToolPlanMatrixName AS Name,\r
+      \    tpm.ES_ToolPlanMatrixName AS Name,\r
 
-      \        tpm.Description,\r
+      \    tpm.Description,\r
 
-      \        tpm.Notes,\r
+      \    tpm.Notes,\r
 
-      \        r.ResourceName AS Resource,\r
+      \    r.ResourceName AS Resource,\r
 
-      \        tp.ToolPlanName AS ToolPlan,\r
+      \    tp.ToolPlanName AS ToolPlan,\r
 
-      \        sb.SpecName AS Spec,\r
+      \    sb.SpecName AS Spec,\r
 
-      \        tpmd.mlxIdealCycleTime,\r
+      \    tpmd.mlxIdealCycleTime,\r
 
-      \        tpmd.mlxProductionVersion,\r
+      \    tpmd.mlxProductionVersion,\r
 
-      \        tpmd.mlxPriority,\r
+      \    tpmd.mlxPriority,\r
 
-      \        erb.ERPRouteName AS mlxERPRoute\r
+      \    erb.ERPRouteName AS mlxERPRoute\r
 
-      \    FROM EXCRSch.ES_ToolPlanMatrix tpm\r
-
-      \r
-
-      \    LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails tpmd\r
-
-      \        ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId\r
-
-      \        AND tpmd.hvr_is_deleted = 0\r
+      FROM EXCRSch.ES_ToolPlanMatrix tpm\r
 
       \r
 
-      \    LEFT JOIN EXCRSch.SpecBase sb\r
+      LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails tpmd\r
 
-      \        ON sb.SpecBaseId = tpmd.SpecBaseId\r
+      \    ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId\r
 
-      \        AND sb.hvr_is_deleted = 0\r
-
-      \r
-
-      \    LEFT JOIN EXCRSch.ResourceDef r\r
-
-      \        ON r.ResourceId = tpmd.ResourceId\r
-
-      \        AND r.hvr_is_deleted = 0\r
+      \    AND tpmd.hvr_is_deleted = 0\r
 
       \r
 
-      \    LEFT JOIN EXCRSch.A_ToolPlan tp\r
+      LEFT JOIN EXCRSch.SpecBase sb\r
 
-      \        ON tp.ToolPlanId = tpmd.ToolPlanId\r
+      \    ON sb.SpecBaseId = tpmd.SpecBaseId\r
 
-      \        AND tp.hvr_is_deleted = 0\r
-
-      \r
-
-      \    LEFT JOIN EXCRSch.ERPRouteBase erb\r
-
-      \        ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId\r
-
-      \        AND erb.hvr_is_deleted = 0\r
+      \    AND sb.hvr_is_deleted = 0\r
 
       \r
 
-      \    WHERE\r
+      LEFT JOIN EXCRSch.ResourceDef r\r
 
-      \        tpm.hvr_is_deleted = 0\r
+      \    ON r.ResourceId = tpmd.ResourceId\r
 
-      \        --AND tpm.ES_ToolPlanMatrixName IN ({placeholders})\r
+      \    AND r.hvr_is_deleted = 0\r
 
       \r
 
-      \    ORDER BY\r
+      LEFT JOIN EXCRSch.A_ToolPlan tp\r
 
-      \        tpm.ES_ToolPlanMatrixName,\r
+      \    ON tp.ToolPlanId = tpmd.ToolPlanId\r
 
-      \        tpmd.mlxPriority"
+      \    AND tp.hvr_is_deleted = 0\r
+
+      \r
+
+      LEFT JOIN EXCRSch.ERPRouteBase erb\r
+
+      \    ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId\r
+
+      \    AND erb.hvr_is_deleted = 0\r
+
+      \r
+
+      WHERE\r
+
+      \    tpm.hvr_is_deleted = 0\r
+
+      \    --AND tpm.ES_ToolPlanMatrixName IN ({placeholders})\r
+
+      \r
+
+      ORDER BY\r
+
+      \    tpm.ES_ToolPlanMatrixName,\r
+
+      \    tpmd.mlxPriority"
     metadata: {}
   - kind: 2
     languageId: sql
