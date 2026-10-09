@@ -81,46 +81,78 @@ def fetch_existing_tool_plan_matrix(materials, batch_size=500):
             placeholders = ",".join(["?"] * len(batch))
 
             query = f"""
-            SELECT
-                tpm.ES_ToolPlanMatrixName AS Name,
-                tpm.Description,
-                tpm.Notes,
-                r.ResourceName AS Resource,
-                tp.ToolPlanName AS ToolPlan,
-                sb.SpecName AS Spec,
-                tpmd.mlxIdealCycleTime,
-                tpmd.mlxProductionVersion,
-                tpmd.mlxPriority,
-                erb.ERPRouteName AS mlxERPRoute
-            FROM EXCRSch.ES_ToolPlanMatrix tpm
+        WITH RankedToolPlanMatrix AS
+        (
+        SELECT
+            tpm.ES_ToolPlanMatrixId,
+            tpm.ES_ToolPlanMatrixName AS Name,
+            tpm.Description,
+            tpm.Notes,
+            r.ResourceName AS Resource,
+            tp.ToolPlanName AS ToolPlan,
+            sb.SpecName AS Spec,
+            tpmd.mlxIdealCycleTime,
+            tpmd.mlxProductionVersion,
+            tpmd.mlxPriority,
+            erb.ERPRouteName AS mlxERPRoute,
+            tpmd.hvr_change_time,
 
-            LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails tpmd
-                ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId
-                AND tpmd.hvr_is_deleted = 0
+            ROW_NUMBER() OVER
+            (
+                PARTITION BY
+                    tpm.ES_ToolPlanMatrixId,
+                    tpmd.SpecBaseId,
+                    tpmd.ResourceId,
+                    tpmd.ToolPlanId,
+                    tpmd.mlxERPRouteBaseId,
+                    tpmd.mlxPriority
+                ORDER BY
+                    tpmd.hvr_change_time DESC,
+                    tpmd.ES_ToolPlanMatrixDetailsId DESC
+            ) AS row_num
 
-            LEFT JOIN EXCRSch.SpecBase sb
-                ON sb.SpecBaseId = tpmd.SpecBaseId
-                AND sb.hvr_is_deleted = 0
+        FROM EXCRSch.ES_ToolPlanMatrix AS tpm
 
-            LEFT JOIN EXCRSch.ResourceDef r
-                ON r.ResourceId = tpmd.ResourceId
-                AND r.hvr_is_deleted = 0
+        LEFT JOIN EXCRSch.ES_ToolPlanMatrixDetails AS tpmd
+            ON tpmd.ES_ToolPlanMatrixId = tpm.ES_ToolPlanMatrixId
+            AND tpmd.hvr_is_deleted = 0
 
-            LEFT JOIN EXCRSch.A_ToolPlan tp
-                ON tp.ToolPlanId = tpmd.ToolPlanId
-                AND tp.hvr_is_deleted = 0
+        LEFT JOIN EXCRSch.SpecBase AS sb
+            ON sb.SpecBaseId = tpmd.SpecBaseId
+            AND sb.hvr_is_deleted = 0
 
-            LEFT JOIN EXCRSch.ERPRouteBase erb
-                ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId
-                AND erb.hvr_is_deleted = 0
+        LEFT JOIN EXCRSch.ResourceDef AS r
+            ON r.ResourceId = tpmd.ResourceId
+            AND r.hvr_is_deleted = 0
 
-            WHERE
-                tpm.hvr_is_deleted = 0
-                AND tpm.ES_ToolPlanMatrixName IN ({placeholders})
+        LEFT JOIN EXCRSch.A_ToolPlan AS tp
+            ON tp.ToolPlanId = tpmd.ToolPlanId
+            AND tp.hvr_is_deleted = 0
 
-            ORDER BY
-                tpm.ES_ToolPlanMatrixName,
-                tpmd.mlxPriority
+        LEFT JOIN EXCRSch.ERPRouteBase AS erb
+            ON erb.ERPRouteBaseId = tpmd.mlxERPRouteBaseId
+            AND erb.hvr_is_deleted = 0
+
+        WHERE
+            tpm.hvr_is_deleted = 0
+            AND tpm.ES_ToolPlanMatrixName IN ({placeholders})
+    )
+        SELECT
+        Name,
+        Description,
+        Notes,
+        Resource,
+        ToolPlan,
+        Spec,
+        mlxIdealCycleTime,
+        mlxProductionVersion,
+        mlxPriority,
+        mlxERPRoute
+    FROM RankedToolPlanMatrix
+    WHERE row_num = 1
+    ORDER BY
+        Name,
+        mlxPriority;
             """
 
             batch_df = pd.read_sql(query, conn, params=batch)
