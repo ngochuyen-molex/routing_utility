@@ -1,7 +1,5 @@
 from pathlib import Path
-
 import pandas as pd
-
 from tpm_common import clean_string, get_sql_connection, validate_input_columns
 
 
@@ -9,8 +7,8 @@ from tpm_common import clean_string, get_sql_connection, validate_input_columns
 # CONFIG
 # ============================================================
 
-INPUT_FILE = Path(r"C:\Users\nguyeb3\OneDrive - kochind.com\add_routing_chau_sorting.xlsx")
-OUTPUT_FILE = Path("output/generated_workflow_sorting.xlsx")
+INPUT_FILE = Path(r"C:\Users\nguyeb3\Downloads\add_routing_chau_september.xlsx")
+OUTPUT_FILE = Path("output/generated_workflow_molding_oct.xlsx")
 
 REQUIRED_COLUMNS = ["Material", "group counter", "Resource"]
 
@@ -40,14 +38,11 @@ EXCEL_OUTPUT_COLUMNS = [
 # ============================================================
 
 def build_description(row):
-
     resource = clean_string(row["Resource"])
     tool = clean_string(row["Tool"])
     material = clean_string(row["Material"])
-
     if tool in ["0", "0.0"]:
         tool = ""
-
     return "-".join(part for part in [resource, tool, material] if part)
 
 
@@ -63,6 +58,8 @@ def prepare_input(input_df):
     prepared_df = prepared_df[(prepared_df["Material"] != "") & (prepared_df["group counter"] != "")].copy()
 
     prepared_df["TargetWorkflowName"] = prepared_df["Material"] + "-" + prepared_df["group counter"]
+    first_counter_mask = prepared_df["group counter"] == "1"
+    prepared_df.loc[first_counter_mask, "TargetWorkflowName"] = prepared_df.loc[first_counter_mask, "Material"]
     prepared_df["NewDescription"] = prepared_df.apply(build_description, axis=1)
 
     target_summary = (
@@ -143,7 +140,6 @@ SelectedWorkflow AS (
     FROM WorkflowCandidates
     WHERE SourceRank = 1
 )
-
 SELECT
     selected.MaterialKey,
     selected.WorkflowName AS SourceWorkflowName,
@@ -152,6 +148,8 @@ SELECT
     erp.Status,
     selected.SourceDescription,
     ws.WorkflowStepName AS StepName,
+    ws.Xlocation,
+    ws.Ylocation,
     ws.RouteStepId,
     rs.Name AS RouteStepName,
     ws.Sequence,
@@ -159,7 +157,8 @@ SELECT
     LEAD(ws.WorkflowStepName) OVER (
         PARTITION BY selected.WorkflowName
         ORDER BY ws.Sequence
-    ) AS ToSpec
+    ) AS ToSpec,
+    ws.IsLastStep
 FROM SelectedWorkflow selected
 LEFT JOIN [STDS].[EXCRSCh].WorkflowStep ws WITH (NOLOCK)
     ON ws.WorkflowId = selected.WorkflowId
@@ -292,8 +291,8 @@ def generate_new_workflows(prepared_df, source_df, existing_target_names):
         new_df["Spec"] = new_df["StepName"]
 
         new_df["Sub Workflow"] = ""
-        new_df["X Location"] = ""
-        new_df["Y Location"] = ""
+        new_df["X Location"] = material_source_df["Xlocation"]
+        new_df["Y Location"] = material_source_df["Ylocation"]
 
         new_df["Route Step"] = material_source_df["RouteStepName"]
         new_df["to spec"] = material_source_df["ToSpec"]
