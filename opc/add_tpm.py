@@ -2,54 +2,51 @@ from pathlib import Path
 import pandas as pd
 from tpm_common import clean_string, validate_input_columns, fetch_existing_tool_plan_matrix, OUTPUT_COLUMNS, clean_tool
 
-
+# NOTE: CAN RECHECK resrouce C_RFE C_RE C_FE AS -> not add tpm
+# take capacity(pcs/hrs), if not exist -> use capacity shot * tool cavity 
 # ============================================================
 # CONFIG
 # ============================================================
 
-INPUT_FILE = Path(r"C:\Users\nguyeb3\OneDrive - kochind.com\add_routing_chau_september.xlsx")
-OUTPUT_FILE = Path("output/add_tpm.xlsx")
+INPUT_FILE = Path(r"C:\Users\nguyeb3\Downloads\add_routing_chau_september.xlsx")
+OUTPUT_FILE = Path("output/add_chau_oct.xlsx")
 EFFICIENCY_FILE = Path(r"\\MLXVHAVWPAPP2\MXV_Shared\PUBLIC\OperationGroup(OPG)\DATA_OE\huyen_data\Eff_Util_workcenter.xlsx")
-
+EXCLUDED_RESOURCES = {"C_RFE", "C_RE", "C_FE"}
 REQUIRED_COLUMNS = [
-    "Material", "Resource", "Tool", "group counter", "Capacity", "Efficiency",
-    "Tool Cavity", "Priority", "Sorting/ Lubricant", "Sorting/ Lubricant Capacity"
-]
-
+    "Material", "Resource", "Tool", "group counter", "Capacity", "Efficiency", "Utilization", 
+    "Tool Cavity", "Dept", "Priority", "Sorting/ Lubricant", "Sorting/ Lubricant Capacity"]
 
 # ============================================================
 # LOOKUPS
 # ============================================================
-
 def build_spec_lookup(existing_df):
     if existing_df.empty:
         return {}
     return existing_df.assign(Spec=existing_df["Spec"].fillna("").astype(str)).query("Spec != ''").groupby("Name")["Spec"].first().to_dict()
-
 
 def load_efficiency_lookup():
     try:
         eff_df = pd.read_excel(EFFICIENCY_FILE, dtype=str)
     except Exception as e:
         print(f"Unable to load efficiency file: {e}")
-        return {}
+        return {}, {}
 
-    required_columns = ["Work Center", "Efficiency"]
+    required_columns = ["Work Center", "Efficiency", "Utilization"]
     missing_columns = list(set(required_columns) - set(eff_df.columns))
 
     if missing_columns:
         print(f"Efficiency file is missing columns: {missing_columns}")
-        return {}
+        return {}, {}
 
     eff_df["Work Center"] = eff_df["Work Center"].apply(clean_string)
     eff_df["Efficiency"] = pd.to_numeric(eff_df["Efficiency"], errors="coerce")
-    eff_df = eff_df[(eff_df["Work Center"] != "") & eff_df["Efficiency"].notna()].copy()
-    duplicate_work_centers = eff_df[eff_df.duplicated(subset=["Work Center"], keep=False)].copy()
+    eff_df["Utilization"] = pd.to_numeric(eff_df["Utilization"], errors="coerce")
+    eff_df = eff_df[eff_df["Work Center"] != ""].drop_duplicates(subset=["Work Center"], keep="last").copy()
 
-    if not duplicate_work_centers.empty:
-        print(f"Warning: {len(duplicate_work_centers)} duplicate work-center rows found in the efficiency file.")
+    efficiency_lookup = eff_df.set_index("Work Center")["Efficiency"].to_dict()
+    utilization_lookup = eff_df.set_index("Work Center")["Utilization"].to_dict()
 
-    return eff_df.drop_duplicates(subset=["Work Center"], keep="last").set_index("Work Center")["Efficiency"].to_dict()
+    return efficiency_lookup, utilization_lookup
 
 
 # ============================================================
@@ -57,22 +54,58 @@ def load_efficiency_lookup():
 # ============================================================
 
 def build_normal_requests(input_df, existing_df):
+    resource = input_df["Resource"].apply(clean_string)
+    excluded_mask = resource.str.upper().isin(EXCLUDED_RESOURCES)
+    input_df = input_df.loc[~excluded_mask].copy()
+
     spec_lookup = build_spec_lookup(existing_df)
-    efficiency_lookup = load_efficiency_lookup()
+    efficiency_lookup, utilization_lookup = load_efficiency_lookup()
 
     material = input_df["Material"].apply(clean_string)
     resource = input_df["Resource"].apply(clean_string)
     tool = input_df["Tool"].apply(clean_tool)
+    dept = input_df["Dept"].apply(clean_string).str.upper()
     group_counter = input_df["group counter"].apply(clean_string)
+
     capacity = pd.to_numeric(input_df["Capacity"], errors="coerce")
-    tool_cavity = pd.to_numeric(input_df["Tool Cavity"], errors="coerce").fillna(1)
+    input_tool_cavity = pd.to_numeric(input_df["Tool Cavity"], errors="coerce")
+    tool_cavity = input_tool_cavity.fillna(1)
     input_efficiency = pd.to_numeric(input_df["Efficiency"], errors="coerce")
+    input_utilization = pd.to_numeric(input_df["Utilization"], errors="coerce")
     resource_efficiency = resource.map(efficiency_lookup)
+    resource_utilization = resource.map(utilization_lookup)
     priority = pd.to_numeric(input_df["Priority"], errors="coerce")
 
-    no_tool_efficiency = input_efficiency.mask(input_efficiency.eq(0)).fillna(resource_efficiency).fillna(1)
-    with_tool_efficiency = input_efficiency.fillna(1)
-    final_efficiency = no_tool_efficiency.where(tool == "", with_tool_efficiency)
+    # MLD: retain current logic.
+    mld_no_tool_efficiency = input_efficiency.mask(input_efficiency.eq(0)).fillna(resource_efficiency).fillna(1)
+    mld_with_tool_efficiency = input_efficiency.fillna(1)
+    mld_efficiency = mld_no_tool_efficiency.where(tool == "", mld_with_tool_efficiency)
+    mld_cycle_time = capacity * tool_cavity * mld_efficiency
+
+    # AS: Capacity × Excel Utilization.
+    as_utilization = input_utilization.fillna(resource_utilization).fillna(1)
+    as_cycle_time = capacity * as_utilization * tool_cavity
+
+    # STP/PLT:
+    # Tool exists -> Efficiency and Utilization from lookup file.
+    # Tool blank -> Efficiency and Utilization from Excel input.
+    stp_plt_input_efficiency = input_efficiency.fillna(1)
+    stp_plt_input_utilization = input_utilization.fillna(1)
+    stp_plt_lookup_efficiency = resource_efficiency.fillna(1)
+    stp_plt_lookup_utilization = resource_utilization.fillna(1)
+    stp_plt_efficiency = stp_plt_input_efficiency.where(tool == "", stp_plt_lookup_efficiency)
+    stp_plt_utilization = stp_plt_input_utilization.where(tool == "", stp_plt_lookup_utilization)
+    stp_plt_cycle_time = capacity * stp_plt_efficiency * stp_plt_utilization * tool_cavity
+
+    ideal_cycle_time = pd.Series(pd.NA, index=input_df.index, dtype="Float64")
+    ideal_cycle_time = ideal_cycle_time.mask(dept == "MD", mld_cycle_time)
+    ideal_cycle_time = ideal_cycle_time.mask(dept == "AS", as_cycle_time)
+    ideal_cycle_time = ideal_cycle_time.mask(dept.isin(["STP", "PLT"]), stp_plt_cycle_time)
+
+    final_efficiency = pd.Series(pd.NA, index=input_df.index, dtype="Float64")
+    final_utilization = pd.Series(pd.NA, index=input_df.index, dtype="Float64")
+    final_efficiency = final_efficiency.mask(dept == "MD", mld_efficiency).mask(dept == "AS", 1).mask(dept.isin(["STP", "PLT"]), stp_plt_efficiency)
+    final_utilization = final_utilization.mask(dept == "MD", 1).mask(dept == "AS", as_utilization).mask(dept.isin(["STP", "PLT"]), stp_plt_utilization)
 
     request_df = pd.DataFrame({
         "Name": material,
@@ -81,18 +114,24 @@ def build_normal_requests(input_df, existing_df):
         "ToolPlan": tool,
         "Resource": resource,
         "Spec": material.map(spec_lookup).fillna(""),
-        "mlxIdealCycleTime": (capacity * tool_cavity * final_efficiency).round().astype("Int64"),
+        "mlxIdealCycleTime": ideal_cycle_time.round().astype("Int64"),
         "mlxProductionVersion": "",
         "mlxPriority": priority.apply(lambda x: "" if pd.isna(x) else int(x)),
         "mlxERPRoute": material + "-" + group_counter,
         "RowType": "Add New TPM",
+        "Dept": dept,
         "Capacity": capacity,
-        "Tool Cavity": pd.to_numeric(input_df["Tool Cavity"], errors="coerce"),
+        "Tool Cavity": input_tool_cavity,
         "FinalToolCavity": tool_cavity,
         "Efficiency": input_efficiency,
+        "Utilization": input_utilization,
         "ResourceEfficiency": resource_efficiency,
-        "FinalEfficiency": final_efficiency
+        "ResourceUtilization": resource_utilization,
+        "FinalEfficiency": final_efficiency,
+        "FinalUtilization": final_utilization
     })
+    invalid_dept_df = request_df[~request_df["Dept"].isin(["MD", "AS", "STP", "PLT"])].copy()
+    request_df = request_df[request_df["Dept"].isin(["MD", "AS", "STP", "PLT"])].copy()
 
     blank_key_df = request_df[(request_df["Name"] == "") | (request_df["Resource"] == "")].copy()
     missing_capacity_df = request_df[(request_df["Name"] != "") & (request_df["Resource"] != "") & request_df["Capacity"].isna()].copy()
@@ -109,7 +148,7 @@ def build_normal_requests(input_df, existing_df):
     conflict_df = request_df[request_df["_final_key"].isin(conflicting_values["_final_key"])].copy()
     request_df = request_df[~request_df["_final_key"].isin(conflicting_values["_final_key"])].drop_duplicates(subset=["_final_key"], keep="last").copy()
 
-    return request_df, blank_key_df, missing_capacity_df, conflict_df
+    return request_df, blank_key_df, missing_capacity_df, invalid_dept_df, conflict_df
 
 
 # ============================================================
@@ -193,7 +232,6 @@ def build_sorting_requests(input_df):
 # ============================================================
 # UPDATE EXISTING SORTING OR ADD NEW SORTING
 # ============================================================
-
 def process_sorting_rows(existing_df, sorting_df):
     updated_existing_df = existing_df.copy()
     updated_existing_df["_sorting_key"] = updated_existing_df["Name"].apply(clean_string) + "|" + updated_existing_df["Resource"].apply(clean_string)
@@ -246,10 +284,12 @@ def process_sorting_rows(existing_df, sorting_df):
 # ============================================================
 # MAIN
 # ============================================================
-
 def main():
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    print("Reading input file...")
+    print(f"Reading input file: {INPUT_FILE}")
+    excel_file = pd.ExcelFile(INPUT_FILE)
+    sheet_name = excel_file.sheet_names[0]
+    print(f"Worksheet: {sheet_name}")
 
     input_df = pd.read_excel(INPUT_FILE, dtype=str)
     validate_input_columns(input_df, REQUIRED_COLUMNS)
@@ -262,6 +302,8 @@ def main():
     existing_df = fetch_existing_tool_plan_matrix(materials)
     found_materials = set(existing_df["Name"].apply(clean_string).unique())
     missing_material_df = input_df[~input_df["Material"].apply(clean_string).isin(found_materials)].drop_duplicates(subset=["Material"]).copy()
+    valid_materials = set(found_materials)
+    input_df = input_df[input_df["Material"].apply(clean_string).isin(valid_materials)].copy()
 
     print(f"Found {len(existing_df)} existing rows.")
     print("Building and processing TPM requests...")
@@ -269,13 +311,14 @@ def main():
     spec_conflict_df = existing_df.groupby("Name")["Spec"].nunique().reset_index()
     spec_conflict_df = spec_conflict_df[spec_conflict_df["Spec"] > 1]
 
-    normal_request_df, blank_key_df, missing_capacity_df, normal_conflict_df = build_normal_requests(input_df, existing_df)
+    normal_request_df, blank_key_df, missing_capacity_df, invalid_dept_df, normal_conflict_df = build_normal_requests(input_df, existing_df)
     sorting_request_df, sorting_conflict_df = build_sorting_requests(input_df)
 
     existing_df, new_normal_df, normal_update_audit_df, matched_normal_request_df = process_normal_rows(existing_df, normal_request_df)
     existing_df, new_sorting_df, sorting_update_audit_df = process_sorting_rows(existing_df, sorting_request_df)
 
     final_df = pd.concat([existing_df, new_normal_df, new_sorting_df], ignore_index=True)
+    final_df = final_df.reindex(columns=OUTPUT_COLUMNS)
 
     row_type_order = {
         "Existing": 1,
@@ -290,12 +333,9 @@ def main():
     final_df = final_df.sort_values(by=["Name", "_sort", "_priority_sort"], na_position="last")
     final_df.drop(columns=["_sort", "_priority_sort"], inplace=True, errors="ignore")
 
-    calculation_audit_df = normal_request_df[
-        [
-            "Name", "Resource", "ToolPlan", "Capacity", "Tool Cavity", "FinalToolCavity",
-            "Efficiency", "ResourceEfficiency", "FinalEfficiency", "mlxIdealCycleTime"
-        ]
-    ].rename(columns={"mlxIdealCycleTime": "NewIdealCycleTime"}).copy()
+    calculation_audit_df = normal_request_df[["Name", "Resource", "ToolPlan", "Dept", "Capacity", "Tool Cavity", "FinalToolCavity",
+        "Efficiency", "Utilization", "ResourceEfficiency", "ResourceUtilization",
+        "FinalEfficiency", "FinalUtilization", "mlxIdealCycleTime"]].rename(columns={"mlxIdealCycleTime": "NewIdealCycleTime"}).copy()
 
     print(f"Normal TPM rows added: {len(new_normal_df)}.")
     print(f"Existing normal TPM rows updated: {len(normal_update_audit_df)}.")
@@ -317,6 +357,7 @@ def main():
         blank_key_df.to_excel(writer, sheet_name="Blank Material Resource", index=False)
         spec_conflict_df.to_excel(writer, sheet_name="Spec Conflict Check", index=False)
         missing_material_df.to_excel(writer, sheet_name="Material Not Found", index=False)
+        invalid_dept_df.to_excel(writer, sheet_name="Invalid Department", index=False)
 
     print(f"Final TPM rows: {len(final_df)}.")
     print(f"Finished: {OUTPUT_FILE}")
