@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "routing"
+version = "0.1.0"
+description = "SAP routing checks (Snowflake) and OpCenter upload-file generators"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "numpy",
+    "openpyxl",
+    "pyodbc",
+    "python-dotenv",
+    "snowflake-connector-python",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+routing = "routing.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"   # don't create .pytest_cache

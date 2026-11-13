@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="snowflake-source" content="cortex-agent-authored" />
+  <title>ROUTING - Proposed Project Structure</title>
+  <script type="application/json" id="snowflake-report-metadata">
+  {
+    "generated": "2026-11-10",
+    "intent": "Proposed folder structure for the ROUTING repo refactor",
+    "dataSources": [{ "type": "file", "path": "ROUTING repo file listing" }],
+    "sections": [
+      { "id": "layers", "title": "How the layers depend on each other" },
+      { "id": "tree", "title": "Folder tree" },
+      { "id": "folders", "title": "What goes in each folder" },
+      { "id": "mapping", "title": "Where current files move" },
+      { "id": "rules", "title": "Rules" }
+    ]
+  }
+  </script>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      max-width: 960px; width: 100%; box-sizing: border-box;
+      margin: 0 auto; padding: clamp(16px, 4vw, 28px);
+      color: light-dark(#1f2937, #e5e7eb);
+      background: light-dark(#ffffff, #111827);
+      line-height: 1.5;
+    }
+    h1, h2, h3 { color: light-dark(#0f172a, #f1f5f9); }
+    h2 { margin-top: 36px; border-bottom: 2px solid light-dark(#e5e7eb, #374151); padding-bottom: 4px; }
+    code { background: light-dark(#f3f4f6, #1f2937); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+    .tree {
+      font-family: Consolas, "Cascadia Mono", monospace; font-size: 14px;
+      background: light-dark(#f8fafc, #0b1220); border: 1px solid light-dark(#e5e7eb, #374151);
+      border-radius: 8px; padding: 16px; overflow-x: auto; white-space: pre; line-height: 1.6;
+    }
+    .tree .d { color: light-dark(#1d4ed8, #93c5fd); font-weight: 600; }
+    .tree .c { color: light-dark(#6b7280, #9ca3af); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .card {
+      border: 1px solid light-dark(#e5e7eb, #374151); border-radius: 10px; padding: 14px 16px;
+      background: light-dark(#ffffff, #1f2937);
+    }
+    .card h3 { margin: 0 0 6px; font-size: 1.05em; }
+    .card p { margin: 0 0 8px; }
+    .card ul { margin: 0; padding-left: 18px; }
+    .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; margin-bottom: 6px;
+           background: light-dark(#dbeafe, #1e3a8a); color: light-dark(#1e3a8a, #dbeafe); }
+    .table-wrap { overflow-x: auto; margin: 12px 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid light-dark(#d1d5db, #374151); padding: 6px 10px; text-align: left; vertical-align: top; }
+    th { background: light-dark(#f3f4f6, #1f2937); }
+    img, svg { max-width: 100%; height: auto; }
+    .mermaid { text-align: center; }
+  </style>
+</head>
+<body>
+
+<h1>ROUTING - Proposed Project Structure</h1>
+<p>Goal: one installable package (<code>routing</code>). Every check can be called from UiPath, a pipeline, a notebook, or another project. Shared code lives in one place.</p>
+
+<h2 id="layers">How the layers depend on each other</h2>
+<p>Imports only go <b>downward</b>. Nothing imports sideways (one check never imports another check).</p>
+<pre class="mermaid">
+flowchart TD
+  CLI["cli.py<br/>command line / UiPath entry"] --> PIPE["pipelines/<br/>pre_uipath"]
+  CLI --> CHECKS
+  CLI --> OPC
+  PIPE --> CHECKS["checks/<br/>pre-UiPath validation"]
+  CHECKS --> DATA["data/<br/>SQL queries only"]
+  OPC["opc/<br/>OpCenter upload files"] --> DATA
+  DATA --> CORE["core/<br/>config, db, clean, excel"]
+  CHECKS --> CORE
+  OPC --> CORE
+</pre>
+
+<h2 id="tree">Folder tree</h2>
+<div class="tree"><span class="d">ROUTING/</span>
+  pyproject.toml          <span class="c"># project definition; pip install -e . makes `routing` importable anywhere</span>
+  .env.example            <span class="c"># SQL_SERVER=, SQL_DATABASE= ... (no real values)</span>
+  .gitignore              <span class="c"># output/, *.pyc, .env</span>
+  README.md               <span class="c"># how to install + run each command</span>
+
+  <span class="d">src/routing/</span>
+    <span class="d">core/</span>                 <span class="c"># shared by everything, no business logic</span>
+      config.py           <span class="c"># PLANT="1901", SNOWFLAKE_CONN="default", paths</span>
+      db.py               <span class="c"># snowflake_conn(), mssql_conn(), query(sql, params)</span>
+      clean.py            <span class="c"># clean_string, clean_tool, to_sap_matnr / from_sap_matnr</span>
+      excel.py            <span class="c"># read_input(), write_output()</span>
+
+    <span class="d">data/</span>                 <span class="c"># SQL queries only, return DataFrames</span>
+      routing.py          <span class="c"># routings by material, plant assignment, deleted status</span>
+      bom.py              <span class="c"># alt BOM count</span>
+      production_version.py
+      operation_capacity.py   <span class="c"># operation capacity query</span>
+      util_eff.py         <span class="c"># routing efficiency / utilization query</span>
+      tpm.py              <span class="c"># OpCenter ToolPlanMatrix (MSSQL), workflows</span>
+
+    <span class="d">checks/</span>               <span class="c"># pre-UiPath validation: df in -> df out</span>
+      routing_condition.py
+      alt_bom.py
+      delete_status.py
+      operation_capacity.py
+      util_eff.py
+      production_version.py   <span class="c"># count + lookup merged</span>
+      routings_by_tool.py
+      tpm_exist.py
+
+    <span class="d">opc/</span>                  <span class="c"># OpCenter upload-file generators</span>
+      add_tpm.py
+      delete_tpm.py
+      update_ideal_cycle_time.py
+      update_tpm_priority.py
+      add_workflow.py
+      compare_workflow.py
+
+    <span class="d">pipelines/</span>
+      pre_uipath.py       <span class="c"># routing_condition -> alt_bom, one file, one call</span>
+
+    cli.py                <span class="c"># routing pre-uipath FILE | routing check alt-bom FILE | routing opc add-tpm FILE</span>
+
+  <span class="d">sql/</span>                    <span class="c"># current "sql query" folder (renamed, no spaces)</span>
+  <span class="d">notebooks/</span>              <span class="c"># check_misalign_workflow.dbcnb</span>
+  <span class="d">docs/</span>                   <span class="c"># note.md, opc readme</span>
+  <span class="d">tests/</span>                  <span class="c"># pytest: clean functions + check logic with fake DataFrames</span>
+  <span class="d">output/</span>                 <span class="c"># generated Excel files (git-ignored)</span>
+</div>
+
+<h2 id="folders">What goes in each folder</h2>
+<div class="grid">
+  <div class="card"><span class="tag">foundation</span><h3>core/</h3>
+    <p>Small helpers that everything uses. Written once.</p>
+    <ul><li>Plant, connection name</li><li>Snowflake + MSSQL connections</li><li>Material number cleaning (pad to 18 / strip zeros)</li><li>Excel read/write</li></ul></div>
+  <div class="card"><span class="tag">queries</span><h3>data/</h3>
+    <p>Only SQL. Takes a list of materials, returns a DataFrame. When a query changes, you edit it here only.</p>
+    <ul><li>Uses bound parameters, no f-string SQL</li><li>Batches large material lists</li></ul></div>
+  <div class="card"><span class="tag">business logic</span><h3>checks/</h3>
+    <p>Each file has the same two functions:</p>
+    <ul><li><code>check_xxx(df) -&gt; df</code>: pure and reusable</li><li><code>run(input_path, output_path=None)</code>: Excel wrapper</li></ul></div>
+  <div class="card"><span class="tag">business logic</span><h3>opc/</h3>
+    <p>Builds the OpCenter submission Excel files. Uses <code>core.db</code> and <code>data.tpm</code> instead of its own connections.</p></div>
+  <div class="card"><span class="tag">orchestration</span><h3>pipelines/</h3>
+    <p>Chains checks together. <code>pre_uipath</code> = routing condition, then alt BOM, with one connection and one save. Returns exit code 0 (success) or 1 (error) for UiPath.</p></div>
+  <div class="card"><span class="tag">entry point</span><h3>cli.py</h3>
+    <p>One command for everything. Takes the file path as an argument (no <code>input()</code> prompt), so UiPath can run it unattended.</p></div>
+</div>
+
+<h2 id="mapping">Where current files move</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Current file</th><th>New location</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>check_routing_condition.py</td><td>checks/routing_condition.py</td><td>SQL moves to data/routing.py</td></tr>
+    <tr><td>alt_bom_count.py</td><td>checks/alt_bom.py</td><td>SQL moves to data/bom.py</td></tr>
+    <tr><td>check_delete.py</td><td>checks/delete_status.py</td><td></td></tr>
+    <tr><td>check_operation_capacity.py</td><td>checks/operation_capacity.py</td><td>SQL moves to data/operation_capacity.py</td></tr>
+    <tr><td>check_util_eff.py</td><td>checks/util_eff.py</td><td>SQL moves to data/util_eff.py; full table names added</td></tr>
+    <tr><td>count_production_version.py + lookup_production_version.py</td><td>checks/production_version.py</td><td>merged; SQL moves to data/production_version.py</td></tr>
+    <tr><td>find_routings_by_tool.py</td><td>checks/routings_by_tool.py</td><td></td></tr>
+    <tr><td>check_tpm_exist.py</td><td>checks/tpm_exist.py</td><td>hardcoded path removed</td></tr>
+    <tr><td>opc/tpm_common.py</td><td>core/ (clean, db) + data/tpm.py</td><td>split into helpers vs queries</td></tr>
+    <tr><td>opc/*.py (other 6)</td><td>src/routing/opc/</td><td>package imports</td></tr>
+    <tr><td>sql query/*.sql</td><td>sql/</td><td></td></tr>
+    <tr><td>check_misalign_workflow.dbcnb</td><td>notebooks/</td><td></td></tr>
+    <tr><td>note.md, opc/readme.md</td><td>docs/</td><td></td></tr>
+  </tbody>
+</table></div>
+<p>Old root scripts stay temporarily as 2-line shims, so existing UiPath / VBS calls keep working. Delete them once UiPath has switched over.</p>
+
+<h2 id="rules">Rules</h2>
+<ol>
+  <li><b>One job per layer:</b> queries in <code>data/</code>, logic in <code>checks/</code> / <code>opc/</code>, file and argument handling in <code>cli.py</code>.</li>
+  <li><b>No hardcoded values:</b> plant and connection name in <code>config.py</code>, credentials in <code>.env</code>, file paths as arguments.</li>
+  <li><b>Safe SQL:</b> bound parameters, never string-built material lists.</li>
+  <li><b>Verify by comparison:</b> the new output must match the old script's output on the same input before an old file is removed.</li>
+</ol>
+
+<h2>Migration order</h2>
+<ol>
+  <li>pyproject.toml, core/, .gitignore cleanup</li>
+  <li>routing_condition + alt_bom + pipelines/pre_uipath (your UiPath prerequisite), compared against old output</li>
+  <li>Remaining checks, one at a time</li>
+  <li>opc/ generators</li>
+  <li>CLI, tests, README</li>
+</ol>
+
+<script src="/libs/mermaid@10.9.6/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'strict' });
+</script>
+</body>
+</html>
